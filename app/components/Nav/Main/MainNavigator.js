@@ -52,6 +52,7 @@ import SwapsQuotesView from '../../UI/Swaps/QuotesView';
 import GasEducationCarousel from '../../Views/GasEducationCarousel';
 import CollectiblesDetails from '../../UI/CollectibleModal';
 import OptinMetrics from '../../UI/OptinMetrics';
+import ScanLedgerHardwareWallet from '../../Views/ScanLedgerHardwareWallet';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -238,6 +239,16 @@ const OfflineModeView = () => (
 	</Stack.Navigator>
 );
 
+const ScanLedgerHardwareWalletView = () => (
+	<Stack.Navigator>
+		<Stack.Screen
+			name="ScanLedgerHardwareWallet"
+			component={ScanLedgerHardwareWallet}
+			options={ScanLedgerHardwareWallet.navigationOptions}
+		/>
+	</Stack.Navigator>
+);
+
 const PaymentRequestView = () => (
 	<Stack.Navigator>
 		<Stack.Screen name="PaymentRequest" component={PaymentRequest} options={PaymentRequest.navigationOptions} />
@@ -340,6 +351,7 @@ const MainNavigator = () => (
 		<Stack.Screen name="ApproveView" component={ApproveView} />
 		<Stack.Screen name="AddBookmarkView" component={AddBookmarkView} />
 		<Stack.Screen name="OfflineModeView" component={OfflineModeView} />
+		<Stack.Screen name="ScanLedgerHardwareWalletView" component={ScanLedgerHardwareWalletView} />
 		<Stack.Screen name="QRScanner" component={QrScanner} />
 		<Stack.Screen name="LockScreen" component={LockScreen} />
 		<Stack.Screen name="PaymentRequestView" component={PaymentRequestView} />

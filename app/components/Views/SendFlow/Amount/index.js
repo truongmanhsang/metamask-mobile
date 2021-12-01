@@ -1083,7 +1083,7 @@ class Amount extends PureComponent {
 }
 
 const mapStateToProps = (state, ownProps) => ({
-	accounts: state.engine.backgroundState.AccountTrackerController.accounts,
+	accounts: state.walletManager.accounts,
 	contractBalances: state.engine.backgroundState.TokenBalancesController.contractBalances,
 	contractExchangeRates: state.engine.backgroundState.TokenRatesController.contractExchangeRates,
 	collectibles: state.engine.backgroundState.CollectiblesController.collectibles,
@@ -1092,7 +1092,7 @@ const mapStateToProps = (state, ownProps) => ({
 	conversionRate: state.engine.backgroundState.CurrencyRateController.conversionRate,
 	providerType: state.engine.backgroundState.NetworkController.provider.type,
 	primaryCurrency: state.settings.primaryCurrency,
-	selectedAddress: state.engine.backgroundState.PreferencesController.selectedAddress,
+	selectedAddress: state.walletManager.selectedAddress,
 	chainId: state.engine.backgroundState.NetworkController.provider.chainId,
 	ticker: state.engine.backgroundState.NetworkController.provider.ticker,
 	tokens: state.engine.backgroundState.TokensController.tokens,

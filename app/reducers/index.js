@@ -15,9 +15,13 @@ import notificationReducer from './notification';
 import infuraAvailabilityReducer from './infuraAvailability';
 import collectiblesReducer from './collectibles';
 import recentsReducer from './recents';
+import walletManagerReducer from './walletManager';
 import { combineReducers } from 'redux';
+import inMemoryReducer from './inMemory';
 
 const rootReducer = combineReducers({
+	inMemory: inMemoryReducer,
+	walletManager: walletManagerReducer,
 	collectibles: collectiblesReducer,
 	engine: engineReducer,
 	privacy: privacyReducer,

@@ -1092,6 +1092,8 @@ class DrawerView extends PureComponent {
 					propagateSwipe
 				>
 					<AccountList
+						toggleModal={this.toggleAccountsModal}
+						navigation={this.props.navigation}
 						enableAccountsAddition
 						identities={identities}
 						selectedAddress={selectedAddress}
@@ -1127,9 +1129,9 @@ class DrawerView extends PureComponent {
 
 const mapStateToProps = (state) => ({
 	network: state.engine.backgroundState.NetworkController,
-	selectedAddress: state.engine.backgroundState.PreferencesController.selectedAddress,
-	accounts: state.engine.backgroundState.AccountTrackerController.accounts,
-	identities: state.engine.backgroundState.PreferencesController.identities,
+	selectedAddress: state.walletManager.selectedAddress,
+	accounts: state.walletManager.accounts,
+	identities: state.walletManager.identities,
 	frequentRpcList: state.engine.backgroundState.PreferencesController.frequentRpcList,
 	currentCurrency: state.engine.backgroundState.CurrencyRateController.currentCurrency,
 	keyrings: state.engine.backgroundState.KeyringController.keyrings,

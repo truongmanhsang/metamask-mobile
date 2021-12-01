@@ -1,28 +1,24 @@
 import {
-	AccountTrackerController,
 	AddressBookController,
 	AssetsContractController,
-	TokenListController,
-	ControllerMessenger,
+	CollectibleDetectionController,
+	CollectiblesController,
 	ComposableController,
+	ControllerMessenger,
 	CurrencyRateController,
-	KeyringController,
-	PersonalMessageManager,
+	GasFeeController,
 	MessageManager,
 	NetworkController,
+	PersonalMessageManager,
 	PhishingController,
-	PreferencesController,
 	TokenBalancesController,
+	TokenDetectionController,
+	TokenListController,
 	TokenRatesController,
+	TokensController,
 	Transaction,
-	TransactionController,
 	TypedMessageManager,
 	WalletDevice,
-	GasFeeController,
-	TokensController,
-	CollectiblesController,
-	TokenDetectionController,
-	CollectibleDetectionController,
 } from '@metamask/controllers';
 import SwapsController, { swapsUtils } from '@metamask/swaps-controller';
 import AsyncStorage from '@react-native-community/async-storage';
@@ -31,10 +27,14 @@ import { toChecksumAddress } from 'ethereumjs-util';
 import Networks, { isMainnetByChainId } from '../util/networks';
 import AppConstants from './AppConstants';
 import { store } from '../store';
-import { renderFromTokenMinimalUnit, balanceToFiatNumber, weiToFiatNumber } from '../util/number';
+import { balanceToFiatNumber, renderFromTokenMinimalUnit, weiToFiatNumber } from '../util/number';
 import NotificationManager from './NotificationManager';
 import Logger from '../util/Logger';
 import { LAST_INCOMING_TX_BLOCK_INFO } from '../constants/storage';
+import HardwareKeyringController from './controllers/HardwareKeyringController';
+import HardwareAccountTrackerController from './controllers/HardwareAccountTrackerController';
+import HardwarePreferencesController from './controllers/HardwarePreferencesController';
+import HardwareTransactionController from './controllers/HardwareTransactionController';
 
 const NON_EMPTY = 'NON_EMPTY';
 
@@ -62,7 +62,7 @@ class Engine {
 	 */
 	constructor(initialState = {}) {
 		if (!Engine.instance) {
-			const preferencesController = new PreferencesController(
+			const preferencesController = new HardwarePreferencesController(
 				{},
 				{
 					ipfsGateway: AppConstants.IPFS_DEFAULT_GATEWAY_URL,
@@ -153,9 +153,8 @@ class Engine {
 				legacyAPIEndpoint: 'https://gas-api.metaswap.codefi.network/networks/<chain_id>/gasPrices',
 				EIP1559APIEndpoint: 'https://gas-api.metaswap.codefi.network/networks/<chain_id>/suggestedGasFees',
 			});
-
 			const controllers = [
-				new KeyringController(
+				new HardwareKeyringController(
 					{
 						removeIdentity: preferencesController.removeIdentity.bind(preferencesController),
 						syncIdentities: preferencesController.syncIdentities.bind(preferencesController),
@@ -165,9 +164,9 @@ class Engine {
 					{ encryptor },
 					initialState.KeyringController
 				),
-				new AccountTrackerController({
+				new HardwareAccountTrackerController({
 					onPreferencesStateChange: (listener) => preferencesController.subscribe(listener),
-					getIdentities: () => preferencesController.state.identities,
+					getIdentities: () => store.getState().walletManager.identities,
 				}),
 				new AddressBookController(),
 				assetsContractController,
@@ -212,7 +211,7 @@ class Engine {
 						this.controllerMessenger.subscribe(`${currencyRateController.name}:stateChange`, listener),
 					onNetworkStateChange: (listener) => networkController.subscribe(listener),
 				}),
-				new TransactionController({
+				new HardwareTransactionController({
 					getNetworkState: () => networkController.state,
 					onNetworkStateChange: (listener) => networkController.subscribe(listener),
 					getProvider: () => networkController.provider,
@@ -362,19 +361,13 @@ class Engine {
 	};
 
 	getTotalFiatAccountBalance = () => {
-		const {
-			CurrencyRateController,
-			PreferencesController,
-			AccountTrackerController,
-			TokenBalancesController,
-			TokenRatesController,
-			TokensController,
-		} = this.context;
-		const { selectedAddress } = PreferencesController.state;
+		const { CurrencyRateController, TokenBalancesController, TokenRatesController, TokensController } =
+			this.context;
+		const selectedAddress = store.getState().walletManager.selectedAddress;
 		const { currentCurrency } = CurrencyRateController.state;
 		const conversionRate =
 			CurrencyRateController.state.conversionRate === null ? 0 : CurrencyRateController.state.conversionRate;
-		const { accounts } = AccountTrackerController.state;
+		const accounts = store.getState().walletManager.accounts;
 		const { tokens } = TokensController.state;
 		let ethFiat = 0;
 		let tokenFiat = 0;

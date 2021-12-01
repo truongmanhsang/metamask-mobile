@@ -1,13 +1,13 @@
 import React, { PureComponent } from 'react';
-import { colors, baseStyles, fontStyles } from '../../../../styles/common';
+import { baseStyles, colors, fontStyles } from '../../../../styles/common';
 import {
-	InteractionManager,
-	StyleSheet,
-	View,
-	Alert,
-	ScrollView,
-	TouchableOpacity,
 	ActivityIndicator,
+	Alert,
+	InteractionManager,
+	ScrollView,
+	StyleSheet,
+	TouchableOpacity,
+	View,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { connect } from 'react-redux';
@@ -15,23 +15,23 @@ import { getSendFlowTitle } from '../../../UI/Navbar';
 import { AddressFrom, AddressTo } from '../AddressInputs';
 import PropTypes from 'prop-types';
 import {
-	renderFromWei,
-	renderFromTokenMinimalUnit,
-	weiToFiat,
 	balanceToFiat,
-	isDecimal,
 	fromWei,
+	isDecimal,
+	renderFromTokenMinimalUnit,
+	renderFromWei,
+	weiToFiat,
 } from '../../../../util/number';
 
 import {
-	getTicker,
 	decodeTransferData,
 	getNormalizedTxState,
+	getTicker,
 	parseTransactionEIP1559,
 	parseTransactionLegacy,
 } from '../../../../util/transactions';
 import StyledButton from '../../../UI/StyledButton';
-import { util, WalletDevice, NetworksChainId, GAS_ESTIMATE_TYPES } from '@metamask/controllers';
+import { GAS_ESTIMATE_TYPES, NetworksChainId, util, WalletDevice } from '@metamask/controllers';
 import { prepareTransaction, resetTransaction, setNonce, setProposedNonce } from '../../../../actions/transaction';
 import { getGasLimit } from '../../../../util/custom-gas';
 import Engine from '../../../../core/Engine';
@@ -48,8 +48,8 @@ import IonicIcon from 'react-native-vector-icons/Ionicons';
 import TransactionTypes from '../../../../core/TransactionTypes';
 import Analytics from '../../../../core/Analytics';
 import { ANALYTICS_EVENT_OPTS } from '../../../../util/analytics';
-import { capitalize, shallowEqual, renderShortText } from '../../../../util/general';
-import { isMainNet, getNetworkName, getNetworkNonce, isMainnetByChainId } from '../../../../util/networks';
+import { capitalize, renderShortText, shallowEqual } from '../../../../util/general';
+import { getNetworkName, getNetworkNonce, isMainNet, isMainnetByChainId } from '../../../../util/networks';
 import Text from '../../../Base/Text';
 import AnalyticsV2 from '../../../../util/analyticsV2';
 import { collectConfusables } from '../../../../util/validators';
@@ -62,6 +62,9 @@ import EditGasFee1559 from '../../../UI/EditGasFee1559';
 import EditGasFeeLegacy from '../../../UI/EditGasFeeLegacy';
 import CustomNonce from '../../../UI/CustomNonce';
 import AppConstants from '../../../../core/AppConstants';
+import { Transaction } from '@ethereumjs/tx';
+import AppEth from '@ledgerhq/hw-app-eth';
+import { HD_DERIVATION_PATH } from '../../../../constants/commons';
 
 const EDIT = 'edit';
 const EDIT_NONCE = 'edit_nonce';
@@ -333,6 +336,11 @@ class Confirm extends PureComponent {
 		 * A string representing the network type
 		 */
 		networkType: PropTypes.string,
+		/**
+		 * Array that hold list of ledger address
+		 */
+		addresses: PropTypes.array,
+		transport: PropTypes.object,
 	};
 
 	state = {
@@ -805,6 +813,70 @@ class Confirm extends PureComponent {
 		});
 	};
 
+	onNextOnLedger = async (transaction) => {
+		const { TransactionController } = Engine.context;
+		try {
+			const {
+				transactionState: { assetType },
+				transport,
+				navigation,
+			} = this.props;
+			transaction = await TransactionController.prepareTransactionOnLedger(transaction);
+			if (transport) {
+				const tx = Transaction.fromTxData(transaction);
+				const txHex = tx.serialize().toString('hex');
+
+				const ledgerApp = new AppEth(transport);
+				await ledgerApp.signTransaction(HD_DERIVATION_PATH, txHex).then(async (signTransactionResult) => {
+					const { result, transactionMeta } = await TransactionController.addTransaction(
+						transaction,
+						TransactionTypes.MMM,
+						WalletDevice.MM_MOBILE
+					);
+
+					await TransactionController.approveTransactionOnLedger(
+						transactionMeta.id,
+						`0x${signTransactionResult.r}`,
+						`0x${signTransactionResult.s}`,
+						`0x${signTransactionResult.v}`
+					);
+					await new Promise((resolve) => resolve(result));
+
+					if (transactionMeta.error) {
+						throw transactionMeta.error;
+					}
+
+					InteractionManager.runAfterInteractions(() => {
+						NotificationManager.watchSubmittedTransaction({
+							...transactionMeta,
+							assetType,
+						});
+						this.checkRemoveCollectible();
+						AnalyticsV2.trackEvent(
+							AnalyticsV2.ANALYTICS_EVENTS.SEND_TRANSACTION_COMPLETED,
+							this.getAnalyticsParams()
+						);
+						resetTransaction();
+						navigation && navigation.dangerouslyGetParent()?.pop();
+					});
+				});
+			}
+		} catch (error) {
+			if (error.message.includes('Ledger')) {
+				error.message += '\nPlease make your device is unlocked and open Ethereum app.';
+			}
+			Alert.alert(strings('transactions.transaction_error'), error && error.message, [
+				{ text: strings('navigation.ok') },
+			]);
+			await Logger.error(error, 'error while trying to send transaction (Confirm)');
+		}
+		this.setState({ transactionConfirmed: false });
+	};
+
+	onCancelLedger = async () => {
+		this.setState({ transactionConfirmed: false });
+	};
+
 	onNext = async () => {
 		const { TransactionController } = Engine.context;
 		const {
@@ -812,8 +884,9 @@ class Confirm extends PureComponent {
 			navigation,
 			resetTransaction,
 			gasEstimateType,
+			addresses,
 		} = this.props;
-		const { EIP1559TransactionData, LegacyTransactionData, transactionConfirmed } = this.state;
+		const { EIP1559TransactionData, LegacyTransactionData, transactionConfirmed, fromSelectedAddress } = this.state;
 		if (transactionConfirmed) return;
 		this.setState({ transactionConfirmed: true, stopUpdateGas: true });
 		try {
@@ -827,6 +900,14 @@ class Confirm extends PureComponent {
 			this.setError(error);
 			if (error) {
 				this.setState({ transactionConfirmed: false, stopUpdateGas: true });
+				return;
+			}
+
+			if (addresses.includes(fromSelectedAddress)) {
+				navigation.navigate('ScanLedgerHardwareWalletView', {
+					screen: 'ScanLedgerHardwareWallet',
+					params: { onReturn: () => this.onNextOnLedger(transaction), onCancel: () => this.onCancelLedger() },
+				});
 				return;
 			}
 
@@ -1353,7 +1434,9 @@ class Confirm extends PureComponent {
 }
 
 const mapStateToProps = (state) => ({
-	accounts: state.engine.backgroundState.AccountTrackerController.accounts,
+	addresses: state.walletManager.addresses,
+	transport: state.inMemory.transport,
+	accounts: state.walletManager.accounts,
 	addressBook: state.engine.backgroundState.AddressBookController?.addressBook,
 	contractBalances: state.engine.backgroundState.TokenBalancesController.contractBalances,
 	contractExchangeRates: state.engine.backgroundState.TokenRatesController.contractExchangeRates,
@@ -1361,7 +1444,7 @@ const mapStateToProps = (state) => ({
 	nativeCurrency: state.engine.backgroundState.CurrencyRateController.nativeCurrency,
 	conversionRate: state.engine.backgroundState.CurrencyRateController.conversionRate,
 	network: state.engine.backgroundState.NetworkController.network,
-	identities: state.engine.backgroundState.PreferencesController.identities,
+	identities: state.walletManager.identities,
 	providerType: state.engine.backgroundState.NetworkController.provider.type,
 	showHexData: state.settings.showHexData,
 	showCustomNonce: state.settings.showCustomNonce,

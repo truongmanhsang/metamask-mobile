@@ -1,5 +1,5 @@
 import { createStore } from 'redux';
-import { persistStore, persistReducer, createMigrate, createTransform } from 'redux-persist';
+import { createMigrate, createTransform, persistReducer, persistStore } from 'redux-persist';
 import AsyncStorage from '@react-native-community/async-storage';
 import FilesystemStorage from 'redux-persist-filesystem-storage';
 import autoMergeLevel2 from 'redux-persist/lib/stateReconciler/autoMergeLevel2';
@@ -88,7 +88,7 @@ const persistTransform = createTransform(
 const persistConfig = {
 	key: 'root',
 	version,
-	blacklist: ['onboarding'],
+	blacklist: ['onboarding', 'inMemory'],
 	storage: MigratedStorage,
 	transforms: [persistTransform],
 	stateReconciler: autoMergeLevel2, // see "Merge Process" section for details.
@@ -99,7 +99,10 @@ const persistConfig = {
 
 const pReducer = persistReducer(persistConfig, rootReducer);
 
-export const store = createStore(pReducer);
+export const store = createStore(
+	pReducer,
+	window.__REDUX_DEVTOOLS_EXTENSION__ && window.__REDUX_DEVTOOLS_EXTENSION__()
+);
 
 /**
  * Initialize services after persist is completed
