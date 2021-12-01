@@ -29,6 +29,10 @@ import EditGasFee1559 from '../../../UI/EditGasFee1559';
 import EditGasFeeLegacy from '../../../UI/EditGasFeeLegacy';
 import AppConstants from '../../../../core/AppConstants';
 import { shallowEqual } from '../../../../util/general';
+import { Transaction } from '@ethereumjs/tx';
+import AppEth from '@ledgerhq/hw-app-eth';
+import { HD_DERIVATION_PATH } from '../../../../constants/commons';
+import ChooseDeviceModal from '../../ScanLedgerHardwareWallet/ChooseDeviceModal';
 
 const { BNToHex, hexToBN } = util;
 
@@ -113,6 +117,8 @@ class Approve extends PureComponent {
 		 * A string representing the network type
 		 */
 		networkType: PropTypes.string,
+		transport: PropTypes.object,
+		addresses: PropTypes.array,
 	};
 
 	state = {
@@ -129,6 +135,8 @@ class Approve extends PureComponent {
 		LegacyGasData: {},
 		LegacyGasDataTemp: {},
 		transactionConfirmed: false,
+		currentTransaction: {},
+		showSelectDeviceScreen: false,
 	};
 
 	computeGasEstimates = (overrideGasPrice, overrideGasLimit, gasEstimateTypeChanged) => {
@@ -411,9 +419,58 @@ class Approve extends PureComponent {
 		}
 	};
 
+	onConfirmOnLedger = async (transaction) => {
+		this.setState({ showSelectDeviceScreen: false });
+		try {
+			const { TransactionController } = Engine.context;
+			const { transport, transactions } = this.props;
+			if (transport) {
+				transaction.transaction = await TransactionController.prepareTransactionOnLedger(
+					transaction.transaction
+				);
+				const tmpTransaction = { ...transaction.transaction };
+				tmpTransaction.gasPrice = '0x' + Number(10000000000).toString(16);
+				tmpTransaction.gas = '0x' + Number(1000000).toString(16);
+				const tx = Transaction.fromTxData(tmpTransaction);
+				const txHex = tx.serialize().toString('hex');
+				const ledgerApp = new AppEth(transport);
+				await ledgerApp.signTransaction(HD_DERIVATION_PATH, txHex).then(async (signTransactionResult) => {
+					TransactionController.hub.once(`${transaction.id}:finished`, (transactionMeta) => {
+						if (transactionMeta.status === 'submitted') {
+							this.setState({ approved: true });
+							this.props.toggleApproveModal();
+							NotificationManager.watchSubmittedTransaction({
+								...transactionMeta,
+								assetType: 'ETH',
+							});
+						} else {
+							throw transactionMeta.error;
+						}
+					});
+
+					const fullTx = transactions.find(({ id }) => id === transaction.id);
+					const updatedTx = { ...fullTx, transaction };
+					await TransactionController.updateTransaction(updatedTx);
+					await TransactionController.approveTransactionOnLedger(
+						transaction.id,
+						`0x${signTransactionResult.r}`,
+						`0x${signTransactionResult.s}`,
+						`0x${signTransactionResult.v}`
+					);
+					AnalyticsV2.trackEvent(AnalyticsV2.ANALYTICS_EVENTS.APPROVAL_COMPLETED, this.getAnalyticsParams());
+				});
+			}
+		} catch (error) {
+			Alert.alert(strings('transactions.transaction_error'), error && error.message, [{ text: 'OK' }]);
+			Logger.error(error, 'error while trying to send transaction (Approve)');
+			this.setState({ transactionHandled: false });
+		}
+		this.setState({ transactionConfirmed: true });
+	};
+
 	onConfirm = async () => {
 		const { TransactionController } = Engine.context;
-		const { transactions, gasEstimateType } = this.props;
+		const { transactions, gasEstimateType, addresses } = this.props;
 		const { EIP1559GasData, LegacyGasData, transactionConfirmed } = this.state;
 
 		if (gasEstimateType === GAS_ESTIMATE_TYPES.FEE_MARKET) {
@@ -423,6 +480,11 @@ class Approve extends PureComponent {
 		this.setState({ transactionConfirmed: true });
 		try {
 			const transaction = this.prepareTransaction(this.props.transaction);
+			this.setState({ currentTransaction: transaction });
+			if (addresses.some((x) => x.toLowerCase() === transaction.from.toLowerCase())) {
+				this.setState({ showSelectDeviceScreen: true });
+				return;
+			}
 			TransactionController.hub.once(`${transaction.id}:finished`, (transactionMeta) => {
 				if (transactionMeta.status === 'submitted') {
 					this.setState({ approved: true });
@@ -517,6 +579,11 @@ class Approve extends PureComponent {
 	onUpdatingValuesEnd = () => {
 		this.setState({ isAnimating: false });
 	};
+	async onSelectDevice() {
+		const { currentTransaction } = this.state;
+		this.setState({ showSelectDeviceScreen: false });
+		await this.onConfirmOnLedger(currentTransaction);
+	}
 
 	render = () => {
 		const {
@@ -531,6 +598,7 @@ class Approve extends PureComponent {
 			animateOnChange,
 			isAnimating,
 			transactionConfirmed,
+			showSelectDeviceScreen,
 		} = this.state;
 		const { transaction, gasEstimateType, gasFeeEstimates, primaryCurrency, chainId } = this.props;
 
@@ -550,6 +618,22 @@ class Approve extends PureComponent {
 				swipeDirection={'down'}
 				propagateSwipe
 			>
+				<Modal
+					isVisible={showSelectDeviceScreen}
+					animationIn="slideInUp"
+					animationOut="slideOutDown"
+					style={styles.bottomModal}
+					backdropOpacity={0.7}
+					animationInTiming={600}
+					animationOutTiming={600}
+					onBackdropPress={this.onCancel}
+					onBackButtonPress={this.onCancel}
+					onSwipeComplete={this.onCancel}
+					swipeDirection={'down'}
+					propagateSwipe
+				>
+					<ChooseDeviceModal onSelectDevice={this.onSelectDevice.bind(this)} />
+				</Modal>
 				<KeyboardAwareScrollView contentContainerStyle={styles.keyboardAwareWrapper}>
 					{mode === 'review' && (
 						<AnimatedTransactionModal onModeChange={this.onModeChange} ready={ready} review={this.review}>
@@ -634,6 +718,9 @@ class Approve extends PureComponent {
 }
 
 const mapStateToProps = (state) => ({
+	selectedAddress: state.walletManager.selectedAddress,
+	addresses: state.walletManager.addresses,
+	transport: state.inMemory.transport,
 	accounts: state.engine.backgroundState.AccountTrackerController.accounts,
 	ticker: state.engine.backgroundState.NetworkController.provider.ticker,
 	transaction: getNormalizedTxState(state),

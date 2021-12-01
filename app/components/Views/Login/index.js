@@ -641,7 +641,7 @@ class Login extends PureComponent {
 
 const mapStateToProps = (state) => ({
 	passwordSet: state.user.passwordSet,
-	selectedAddress: state.engine.backgroundState.PreferencesController?.selectedAddress,
+	selectedAddress: state.walletManager?.selectedAddress,
 });
 
 const mapDispatchToProps = (dispatch) => ({

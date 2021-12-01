@@ -51,7 +51,7 @@ const Wallet = ({ navigation }: any) => {
 	/**
 	 * Map of accounts to information objects including balances
 	 */
-	const accounts = useSelector((state: any) => state.engine.backgroundState.AccountTrackerController.accounts);
+	const accounts = useSelector((state: any) => state.walletManager.accounts);
 	/**
 	 * ETH to current currency conversion rate
 	 */
@@ -67,13 +67,11 @@ const Wallet = ({ navigation }: any) => {
 	/**
 	 * An object containing each identity in the format address => account
 	 */
-	const identities = useSelector((state: any) => state.engine.backgroundState.PreferencesController.identities);
+	const identities = useSelector((state: any) => state.walletManager.identities);
 	/**
 	 * A string that represents the selected address
 	 */
-	const selectedAddress = useSelector(
-		(state: any) => state.engine.backgroundState.PreferencesController.selectedAddress
-	);
+	const selectedAddress = useSelector((state: any) => state.walletManager.selectedAddress);
 	/**
 	 * An array that represents the user tokens
 	 */

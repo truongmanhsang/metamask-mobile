@@ -785,7 +785,7 @@ Main.propTypes = {
 const mapStateToProps = (state) => ({
 	lockTime: state.settings.lockTime,
 	thirdPartyApiMode: state.privacy.thirdPartyApiMode,
-	selectedAddress: state.engine.backgroundState.PreferencesController.selectedAddress,
+	selectedAddress: state.walletManager.selectedAddress,
 	chainId: state.engine.backgroundState.NetworkController.provider.chainId,
 	tokens: state.engine.backgroundState.TokensController.tokens,
 	dappTransactionModalVisible: state.modals.dappTransactionModalVisible,

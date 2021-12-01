@@ -170,11 +170,12 @@ const mapStateToProps = (
 		engine: {
 			backgroundState: { PreferencesController, AccountTrackerController },
 		},
+		walletManager,
 	},
 	{ item: { balance, address } }
 ) => {
-	const { selectedAddress } = PreferencesController;
-	const { accounts } = AccountTrackerController;
+	const selectedAddress = walletManager.selectedAddress;
+	const accounts = walletManager.accounts;
 	const selectedAccount = accounts[selectedAddress];
 	const selectedAccountHasBalance =
 		selectedAccount && Object.prototype.hasOwnProperty.call(selectedAccount, BALANCE_KEY);

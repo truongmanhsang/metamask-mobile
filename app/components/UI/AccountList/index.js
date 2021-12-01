@@ -23,6 +23,7 @@ import { ANALYTICS_EVENT_OPTS } from '../../../util/analytics';
 import { doENSReverseLookup } from '../../../util/ENSUtils';
 import AccountElement from './AccountElement';
 import { connect } from 'react-redux';
+import { ADD_LEDGER } from '../../../constants/commons';
 
 const styles = StyleSheet.create({
 	wrapper: {
@@ -50,7 +51,7 @@ const styles = StyleSheet.create({
 		flex: 1,
 	},
 	footer: {
-		height: Device.isIphoneX() ? 140 : 110,
+		height: Device.isIphoneX() ? 140 + 50 : 110 + 50,
 		paddingBottom: Device.isIphoneX() ? 30 : 0,
 		justifyContent: 'center',
 		flexDirection: 'column',
@@ -76,6 +77,10 @@ const styles = StyleSheet.create({
  */
 class AccountList extends PureComponent {
 	static propTypes = {
+		/**
+		 * Object that represents the navigator
+		 */
+		navigation: PropTypes.object,
 		/**
 		 * Map of accounts to information objects including balances
 		 */
@@ -120,6 +125,10 @@ class AccountList extends PureComponent {
 		 * ID of the current network
 		 */
 		network: PropTypes.string,
+		/**
+		 * toggleAModal
+		 */
+		toggleModal: PropTypes.func,
 	};
 
 	state = {
@@ -167,15 +176,12 @@ class AccountList extends PureComponent {
 	onAccountChange = async (newIndex) => {
 		const previousIndex = this.state.selectedAccountIndex;
 		const { PreferencesController } = Engine.context;
-		const { keyrings, accounts } = this.props;
+		const { accounts, identities } = this.props;
 
 		requestAnimationFrame(async () => {
 			try {
 				this.mounted && this.setState({ selectedAccountIndex: newIndex });
-
-				const allKeyrings =
-					keyrings && keyrings.length ? keyrings : Engine.context.KeyringController.state.keyrings;
-				const accountsOrdered = allKeyrings.reduce((list, keyring) => list.concat(keyring.accounts), []);
+				const accountsOrdered = Object.keys(identities);
 
 				// If not enabled is used from address book so we don't change accounts
 				if (!this.props.enableAccountsAddition) {
@@ -302,8 +308,7 @@ class AccountList extends PureComponent {
 		const { accounts, identities, selectedAddress, keyrings, getBalanceError } = this.props;
 		// This is a temporary fix until we can read the state from @metamask/controllers
 		const allKeyrings = keyrings && keyrings.length ? keyrings : Engine.context.KeyringController.state.keyrings;
-
-		const accountsOrdered = allKeyrings.reduce((list, keyring) => list.concat(keyring.accounts), []);
+		const accountsOrdered = Object.keys(identities);
 		return accountsOrdered
 			.filter((address) => !!identities[toChecksumAddress(address)])
 			.map((addr, index) => {
@@ -350,6 +355,14 @@ class AccountList extends PureComponent {
 
 	keyExtractor = (item) => item.address;
 
+	connectLedgerWallet() {
+		this.props.toggleModal();
+		this.props.navigation.navigate('ScanLedgerHardwareWalletView', {
+			screen: 'ScanLedgerHardwareWallet',
+			params: { type: ADD_LEDGER },
+		});
+	}
+
 	render() {
 		const { orderedAccounts } = this.state;
 		const { enableAccountsAddition } = this.props;
@@ -387,6 +400,13 @@ class AccountList extends PureComponent {
 						>
 							<Text style={styles.btnText}>{strings('accounts.import_account')}</Text>
 						</TouchableOpacity>
+						<TouchableOpacity
+							onPress={this.connectLedgerWallet.bind(this)}
+							style={styles.footerButton}
+							testID={'connect-ledger-button'}
+						>
+							<Text style={styles.btnText}>{strings('accounts.connect_ledger_hardware_wallet')}</Text>
+						</TouchableOpacity>
 					</View>
 				)}
 			</SafeAreaView>
@@ -395,7 +415,7 @@ class AccountList extends PureComponent {
 }
 
 const mapStateToProps = (state) => ({
-	accounts: state.engine.backgroundState.AccountTrackerController.accounts,
+	accounts: state.walletManager.accounts,
 	thirdPartyApiMode: state.privacy.thirdPartyApiMode,
 	keyrings: state.engine.backgroundState.KeyringController.keyrings,
 	network: state.engine.backgroundState.NetworkController.network,

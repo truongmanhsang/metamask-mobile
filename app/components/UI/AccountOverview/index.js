@@ -218,8 +218,9 @@ class AccountOverview extends PureComponent {
 
 	setAccountLabel = () => {
 		const { PreferencesController } = Engine.context;
-		const { selectedAddress } = this.props;
+		const { selectedAddress, identities } = this.props;
 		const { accountLabel } = this.state;
+		PreferencesController.setTempIdentities(identities);
 		PreferencesController.setAccountLabel(selectedAddress, accountLabel);
 		this.setState({ accountLabelEditable: false });
 	};
@@ -407,8 +408,8 @@ class AccountOverview extends PureComponent {
 }
 
 const mapStateToProps = (state) => ({
-	selectedAddress: state.engine.backgroundState.PreferencesController.selectedAddress,
-	identities: state.engine.backgroundState.PreferencesController.identities,
+	selectedAddress: state.walletManager.selectedAddress,
+	identities: state.walletManager.identities,
 	currentCurrency: state.engine.backgroundState.CurrencyRateController.currentCurrency,
 	chainId: state.engine.backgroundState.NetworkController.provider.chainId,
 	ticker: state.engine.backgroundState.NetworkController.provider.ticker,

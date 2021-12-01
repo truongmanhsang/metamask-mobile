@@ -1,5 +1,5 @@
 import React, { PureComponent } from 'react';
-import { StyleSheet, AppState, Alert, InteractionManager } from 'react-native';
+import { Alert, AppState, InteractionManager, StyleSheet } from 'react-native';
 import Engine from '../../../core/Engine';
 import PropTypes from 'prop-types';
 import TransactionEditor from '../../UI/TransactionEditor';
@@ -11,13 +11,17 @@ import { connect } from 'react-redux';
 import NotificationManager from '../../../core/NotificationManager';
 import Analytics from '../../../core/Analytics';
 import { ANALYTICS_EVENT_OPTS } from '../../../util/analytics';
-import { getTransactionReviewActionKey, getNormalizedTxState, getActiveTabUrl } from '../../../util/transactions';
+import { getActiveTabUrl, getNormalizedTxState, getTransactionReviewActionKey } from '../../../util/transactions';
 import { strings } from '../../../../locales/i18n';
 import { safeToChecksumAddress } from '../../../util/address';
 import { WALLET_CONNECT_ORIGIN } from '../../../util/walletconnect';
 import Logger from '../../../util/Logger';
 import AnalyticsV2 from '../../../util/analyticsV2';
 import { GAS_ESTIMATE_TYPES } from '@metamask/controllers';
+import { Transaction } from '@ethereumjs/tx';
+import AppEth from '@ledgerhq/hw-app-eth';
+import { HD_DERIVATION_PATH } from '../../../constants/commons';
+import ChooseDeviceModal from '../ScanLedgerHardwareWallet/ChooseDeviceModal';
 
 const REVIEW = 'review';
 const EDIT = 'edit';
@@ -79,12 +83,19 @@ class Approval extends PureComponent {
 		 * A string representing the network chainId
 		 */
 		chainId: PropTypes.string,
+		/**
+		 * Array that hold list of ledger address
+		 */
+		addresses: PropTypes.array,
+		transport: PropTypes.object,
 	};
 
 	state = {
 		mode: REVIEW,
 		transactionHandled: false,
 		transactionConfirmed: false,
+		showSelectDeviceScreen: false,
+		currentTransaction: {},
 	};
 
 	componentWillUnmount = () => {
@@ -211,6 +222,59 @@ class Approval extends PureComponent {
 		AnalyticsV2.trackEvent(AnalyticsV2.ANALYTICS_EVENTS.DAPP_TRANSACTION_CANCELLED, this.getAnalyticsParams());
 	};
 
+	onCancelLedger = async () => {
+		this.setState({ transactionConfirmed: false });
+	};
+
+	onConfirmOnLedger = async (transaction) => {
+		this.setState({ showSelectDeviceScreen: false });
+		try {
+			const { TransactionController } = Engine.context;
+			const { transport, transactions } = this.props;
+			if (transport) {
+				transaction.transaction = await TransactionController.prepareTransactionOnLedger(
+					transaction.transaction
+				);
+				const tmpTransaction = { ...transaction.transaction };
+				const tx = Transaction.fromTxData(tmpTransaction);
+				const txHex = tx.serialize().toString('hex');
+				const ledgerApp = new AppEth(transport);
+				await ledgerApp.signTransaction(HD_DERIVATION_PATH, txHex).then(async (signTransactionResult) => {
+					TransactionController.hub.once(`${transaction.id}:finished`, (transactionMeta) => {
+						if (transactionMeta.status === 'submitted') {
+							this.setState({ transactionHandled: true });
+							this.props.toggleDappTransactionModal();
+							NotificationManager.watchSubmittedTransaction({
+								...transactionMeta,
+								assetType: transaction.assetType,
+							});
+						} else {
+							throw transactionMeta.error;
+						}
+					});
+
+					const fullTx = transactions.find(({ id }) => id === transaction.id);
+					const updatedTx = { ...fullTx, transaction };
+					await TransactionController.updateTransaction(updatedTx);
+					await TransactionController.approveTransactionOnLedger(
+						transaction.id,
+						`0x${signTransactionResult.r}`,
+						`0x${signTransactionResult.s}`,
+						`0x${signTransactionResult.v}`
+					);
+					this.showWalletConnectNotification(true);
+				});
+			}
+		} catch (error) {
+			Alert.alert(strings('transactions.transaction_error'), error && error.message, [
+				{ text: strings('navigation.ok') },
+			]);
+			Logger.error(error, 'error while trying to send transaction (Approval)');
+			this.setState({ transactionHandled: false });
+		}
+		this.setState({ transactionConfirmed: false });
+	};
+
 	/**
 	 * Callback on confirm transaction
 	 */
@@ -220,6 +284,7 @@ class Approval extends PureComponent {
 			transactions,
 			transaction: { assetType, selectedAsset },
 			showCustomNonce,
+			addresses,
 		} = this.props;
 		let { transaction } = this.props;
 		const { nonce } = transaction;
@@ -237,6 +302,12 @@ class Approval extends PureComponent {
 					gasEstimateType,
 					EIP1559GasData,
 				});
+			}
+
+			this.setState({ currentTransaction: transaction });
+			if (addresses.some((x) => x.toLowerCase() === transaction.from.toLowerCase())) {
+				this.setState({ showSelectDeviceScreen: true });
+				return;
 			}
 
 			TransactionController.hub.once(`${transaction.id}:finished`, (transactionMeta) => {
@@ -340,9 +411,15 @@ class Approval extends PureComponent {
 		return transactionToSend;
 	};
 
+	async onSelectDevice() {
+		const { currentTransaction } = this.state;
+		this.setState({ showSelectDeviceScreen: false });
+		await this.onConfirmOnLedger(currentTransaction);
+	}
+
 	render = () => {
 		const { transaction, dappTransactionModalVisible } = this.props;
-		const { mode, transactionConfirmed } = this.state;
+		const { mode, transactionConfirmed, showSelectDeviceScreen } = this.state;
 		return (
 			<Modal
 				isVisible={dappTransactionModalVisible}
@@ -358,6 +435,22 @@ class Approval extends PureComponent {
 				swipeDirection={'down'}
 				propagateSwipe
 			>
+				<Modal
+					isVisible={showSelectDeviceScreen}
+					animationIn="slideInUp"
+					animationOut="slideOutDown"
+					style={styles.bottomModal}
+					backdropOpacity={0.7}
+					animationInTiming={600}
+					animationOutTiming={600}
+					onBackdropPress={this.onCancel}
+					onBackButtonPress={this.onCancel}
+					onSwipeComplete={this.onCancel}
+					swipeDirection={'down'}
+					propagateSwipe
+				>
+					<ChooseDeviceModal onSelectDevice={this.onSelectDevice.bind(this)} />
+				</Modal>
 				<TransactionEditor
 					promptedFromApproval
 					mode={mode}
@@ -374,6 +467,9 @@ class Approval extends PureComponent {
 }
 
 const mapStateToProps = (state) => ({
+	selectedAddress: state.walletManager.selectedAddress,
+	addresses: state.walletManager.addresses,
+	transport: state.inMemory.transport,
 	transaction: getNormalizedTxState(state),
 	transactions: state.engine.backgroundState.TransactionController.transactions,
 	networkType: state.engine.backgroundState.NetworkController.provider.type,

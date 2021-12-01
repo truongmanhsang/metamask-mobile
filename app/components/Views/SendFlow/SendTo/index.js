@@ -708,11 +708,11 @@ class SendFlow extends PureComponent {
 }
 
 const mapStateToProps = (state) => ({
-	accounts: state.engine.backgroundState.AccountTrackerController.accounts,
+	accounts: state.walletManager.accounts,
 	addressBook: state.engine.backgroundState.AddressBookController.addressBook,
-	selectedAddress: state.engine.backgroundState.PreferencesController.selectedAddress,
+	selectedAddress: state.walletManager.selectedAddress,
 	selectedAsset: state.transaction.selectedAsset,
-	identities: state.engine.backgroundState.PreferencesController.identities,
+	identities: state.walletManager.identities,
 	keyrings: state.engine.backgroundState.KeyringController.keyrings,
 	ticker: state.engine.backgroundState.NetworkController.provider.ticker,
 	network: state.engine.backgroundState.NetworkController.network,
